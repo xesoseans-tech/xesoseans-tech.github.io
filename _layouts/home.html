@@ -52,25 +52,33 @@ layout: default
 	{%- endif -%}
 
 {%- if site.plainwhite.medium_username -%}
-<ul class="posts" id="medium-posts">
-	<li>
-		<h1 id="posts-label">medium posts</h1>
-	</li>
-	<li id="medium-posts-loading">Loading Medium posts&hellip;</li>
-</ul>
+<div id="medium-posts-section">
+	<h1 id="posts-label">medium posts</h1>
+	<p id="medium-posts-loading">Loading Medium posts&hellip;</p>
+	<div class="medium-grid" id="medium-grid"></div>
+</div>
 
 <script>
 (function () {
 	var username = {{ site.plainwhite.medium_username | jsonify }};
 	var feedUrl = "https://medium.com/feed/@" + username;
 	var apiUrl = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(feedUrl);
-	var list = document.getElementById("medium-posts");
-	var loadingItem = document.getElementById("medium-posts-loading");
+	var grid = document.getElementById("medium-grid");
+	var loadingMsg = document.getElementById("medium-posts-loading");
+	var FALLBACK_IMAGE = "https://miro.medium.com/v2/resize:fit:1200/1*jfdwtvU6V6g99q3G7gq7dQ.png";
 
 	function formatDate(dateStr) {
 		var d = new Date(dateStr);
 		if (isNaN(d)) { return dateStr; }
 		return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+	}
+
+	function extractImage(item) {
+		if (item.thumbnail && item.thumbnail.indexOf("http") === 0) {
+			return item.thumbnail;
+		}
+		var match = /<img[^>]+src="([^">]+)"/i.exec(item.content || item.description || "");
+		return match ? match[1] : FALLBACK_IMAGE;
 	}
 
 	fetch(apiUrl)
@@ -80,55 +88,60 @@ layout: default
 				throw new Error("No Medium items");
 			}
 
-			loadingItem.remove();
+			var items = data.items.slice().sort(function (a, b) {
+				return new Date(b.pubDate) - new Date(a.pubDate);
+			});
 
-			data.items.forEach(function (item) {
-				var li = document.createElement("li");
+			loadingMsg.remove();
 
-				var link = document.createElement("a");
-				link.className = "post-link";
-				link.href = item.link;
-				link.target = "_blank";
-				link.rel = "noopener";
+			items.forEach(function (item) {
+				var card = document.createElement("a");
+				card.className = "medium-card";
+				card.href = item.link;
+				card.target = "_blank";
+				card.rel = "noopener";
+
+				var thumbWrap = document.createElement("div");
+				thumbWrap.className = "medium-thumb";
+				var img = document.createElement("img");
+				img.src = extractImage(item);
+				img.alt = item.title;
+				img.loading = "lazy";
+				img.onerror = function () { img.src = FALLBACK_IMAGE; };
+				thumbWrap.appendChild(img);
+
+				var body = document.createElement("div");
+				body.className = "medium-card-body";
 
 				var title = document.createElement("h2");
 				title.className = "post-title";
 				title.textContent = item.title;
-				link.appendChild(title);
 
 				var meta = document.createElement("div");
 				meta.className = "post-meta";
 
-				var cats = document.createElement("ul");
-				cats.className = "post-categories";
-				(item.categories || []).slice(0, 4).forEach(function (cat) {
-					var catLi = document.createElement("li");
-					catLi.textContent = cat;
-					cats.appendChild(catLi);
-				});
-
-				var dateDiv = document.createElement("div");
-				dateDiv.className = "post-date";
 				var badge = document.createElement("span");
 				badge.className = "medium-badge";
 				badge.textContent = "medium";
-				var icon = document.createElement("i");
-				icon.className = "icon-calendar";
-				dateDiv.appendChild(badge);
-				dateDiv.appendChild(icon);
-				dateDiv.appendChild(document.createTextNode(formatDate(item.pubDate)));
 
-				meta.appendChild(cats);
-				meta.appendChild(dateDiv);
+				var dateSpan = document.createElement("div");
+				dateSpan.className = "post-date";
+				dateSpan.appendChild(badge);
+				dateSpan.appendChild(document.createTextNode(formatDate(item.pubDate)));
 
-				li.appendChild(link);
-				li.appendChild(meta);
-				list.appendChild(li);
+				meta.appendChild(dateSpan);
+
+				body.appendChild(title);
+				body.appendChild(meta);
+
+				card.appendChild(thumbWrap);
+				card.appendChild(body);
+				grid.appendChild(card);
 			});
 		})
 		.catch(function (err) {
-			if (loadingItem) {
-				loadingItem.textContent = "Couldn't load Medium posts right now.";
+			if (loadingMsg) {
+				loadingMsg.textContent = "Couldn't load Medium posts right now.";
 			}
 			console.error("Medium fetch failed:", err);
 		});
